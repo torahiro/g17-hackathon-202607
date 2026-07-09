@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>クトゥルフ神話TRPG専用 AI『何でも屋』LIVE HUD</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #05070f;
+            --bg-sidebar: #0b1120;
+            --card-bg: #151f32;
+            --text-main: #f1f5f9;
+            --text-muted: #475569;
+            --neon-blue: #0ea5e9;
+            --neon-green: #10b981;
+            --neon-rare: #ef4444;
+            --cthulhu-purple: #818cf8;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0; display: flex;
+            background: var(--bg-main); color: var(--text-main);
+            height: 100vh; overflow: hidden;
+        }
+
+        /* クトゥルフ専用サイドバー */
+        .sidebar {
+            width: 330px; background: var(--bg-sidebar);
+            border-right: 1px solid #1e293b; padding: 25px;
+            box-sizing: border-box; height: 100vh; position: fixed;
+            overflow-y: auto; z-index: 10;
+        }
+
+        .hud-badge {
+            background: rgba(129, 140, 248, 0.15); color: var(--cthulhu-purple);
+            padding: 4px 10px; border-radius: 6px; font-size: 0.75em; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 1px; border: 1px solid rgba(129, 140, 248, 0.3);
+            display: inline-block; margin-bottom: 20px;
+        }
+
+        .input-group { margin-bottom: 20px; }
+        .input-group label { display: block; margin-bottom: 6px; font-size: 0.8em; color: var(--neon-blue); font-weight: bold; letter-spacing: 1px; }
+        .input-group input, .input-group textarea, .input-group select {
+            width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #1e293b;
+            background: var(--bg-main); color: white; box-sizing: border-box; font-size: 0.9em;
+        }
+
+        /* メインHUDエリア */
+        .main-content {
+            margin-left: 330px; padding: 40px; width: calc(100% - 330px);
+            box-sizing: border-box; height: 100vh; overflow-y: auto;
+        }
+
+        .hud-header {
+            border-bottom: 1px solid #1e293b; padding-bottom: 15px; margin-bottom: 25px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .hud-title {
+            font-size: 1.6em; font-weight: 900;
+            background: linear-gradient(to right, #0ea5e9, #818cf8);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        /* PDFスキャナー */
+        .upload-section {
+            background: #091022; border: 2px dashed #1e293b;
+            padding: 25px; border-radius: 12px; margin-bottom: 25px;
+            text-align: center; transition: 0.3s;
+        }
+        .upload-section.loaded { border-color: var(--neon-green); background: #051614; }
+
+        /* イベント進行コントローラー */
+        .live-controller {
+            background: #0f172a; border: 1px solid #1e293b;
+            padding: 20px; border-radius: 10px; margin-bottom: 25px;
+        }
+        .timeline-btns { display: flex; gap: 10px; margin-top: 12px; }
+        .timeline-btn {
+            flex: 1; padding: 12px; background: #1e293b; border: 1px solid #334155;
+            color: var(--text-main); border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85em; transition: 0.2s;
+        }
+        .timeline-btn.active {
+            background: #ef4444; border-color: #f87171; box-shadow: 0 0 10px rgba(239,68,68,0.4);
+        }
+
+        /* AI戦況アナライズパネル */
+        .ai-concierge-panel {
+            background: #141635;
+            border: 1px solid #312e81;
+            border-left: 5px solid var(--cthulhu-purple);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .info-box {
+            background: #0b0f19; border-left: 4px solid var(--neon-blue);
+            padding: 18px; border-radius: 6px; margin-bottom: 25px; line-height: 1.6; font-size: 0.95em;
+        }
+
+        .tabs { display: flex; gap: 10px; border-bottom: 1px solid #1e293b; margin-bottom: 25px; }
+        .tab { padding: 12px 20px; cursor: pointer; font-weight: bold; color: var(--text-muted); transition: 0.3s; }
+        .tab.active { color: var(--neon-blue); border-bottom: 3px solid var(--neon-blue); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 縦長トランプ型カード */
+        .cards { display: flex; gap: 20px; }
+        .card {
+            flex: 1; background: var(--card-bg); border: 1px solid #1e293b;
+            border-radius: 12px; padding: 22px; min-height: 290px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); cursor: pointer;
+        }
+        .card:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(0,0,0,0.5); border-color: #334155; }
+        .card.main { border-top: 4px solid var(--neon-green); }
+        .card.technical { border-top: 4px solid var(--neon-blue); }
+        .card.rare { border-top: 4px solid var(--neon-rare); }
+
+        .card-tag { font-size: 0.7em; font-weight: 800; padding: 3px 6px; border-radius: 4px; display: inline-block; margin-bottom: 12px; }
+        .tag-main { background: rgba(52,211,153,0.15); color: var(--neon-green); }
+        .tag-tech { background: rgba(56,189,248,0.15); color: var(--neon-blue); }
+        .tag-rare { background: rgba(248,113,113,0.15); color: var(--neon-rare); }
+        .card-title { font-size: 1.15em; font-weight: 700; color: white; margin-bottom: 10px; }
+        .card-body { font-size: 0.88em; line-height: 1.5; color: #cbd5e1; }
+
+        .trend-container { margin-top: 15px; }
+        .trend-label { font-size: 0.75em; color: #64748b; display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .trend-bar-bg { background: #05070f; height: 5px; border-radius: 3px; width: 100%; overflow: hidden; }
+        .trend-bar-fill { height: 100%; border-radius: 3px; }
+        .fill-main { background: var(--neon-green); }
+        .fill-tech { background: var(--neon-blue); }
+        .fill-rare { background: var(--neon-rare); }
+
+        .risk-box { background: #130d0d; border: 1px solid #2d1414; border-left: 4px solid var(--neon-rare); padding: 20px; border-radius: 8px; }
+        
+        .btn { background: var(--neon-blue); color: #05070f; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-success { background: var(--neon-green); }
+        .btn-refresh { background: #1e293b; color: white; border: 1px solid #334155; margin-left: 10px; }
+        .btn-refresh:hover { background: #334155; }
+        
+        .pulse-dot { width: 8px; height: 8px; background: var(--neon-green); border-radius: 50%; display: inline-block; margin-right: 8px; animation: blink 1.5s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="hud-badge">クトゥルフ神話第7版専用HUD</div>
+
+        <div class="input-group">
+            <label style="color: #f59e0b;">🔑 OpenAI API KEY (リアル連携用)</label>
+            <input type="password" id="apiKeyInput" placeholder="sk-..." value="">
+            <small style="color:var(--text-muted); font-size:0.75em;">※空欄時は内蔵された高品質状況連動モックが駆動します</small>
+        </div>
+
+        <hr style="border-color: #1e293b; margin: 20px 0;">
+        <h3 style="font-size:1.1em; color:var(--neon-blue);">👤 INVESTOR STATUS</h3>
+        
+        <div class="input-group">
+            <label>探索者名</label>
+            <input type="text" id="charName" value="ジョン・ドゥ">
+        </div>
+        <div class="input-group">
+            <label>🧠 探索者の性格 / バックストーリー</label>
+            <select id="personalitySelect" onchange="updateLiveSystem()">
+                <option value="p1">臆病で慎重（安全志向のオカルティスト）</option>
+                <option value="p2">好戦的で大胆（向こう見ずな元軍人）</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label>〈目星〉 技能値 (%)</label>
+            <input type="number" id="meganeInput" value="25" oninput="updateLiveSystem()">
+        </div>
+        <div class="input-group">
+            <label>STR (筋力値)</label>
+            <input type="number" id="strInput" value="60" oninput="updateLiveSystem()">
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="hud-header">
+            <div class="hud-title">🧙‍♂️ AI『何でも屋』パレット for クトゥルフ神話TRPG</div>
+            <div style="font-size:0.85em; color:var(--neon-green);"><span class="pulse-dot"></span>HUD SYNC ACTIVE</div>
+        </div>
+
+        <div class="upload-section" id="uploadDropZone">
+            <h4 style="margin:0 0 10px 0; letter-spacing:1px;">💾 クトゥルフ神話TRPGルール.pdf のスキャン</h4>
+            <input type="file" id="pdfFileInput" accept=".pdf" style="color:var(--text-muted); font-size:0.9em;">
+            <div id="pdfEngineStatus" style="font-size:0.85em; color:var(--neon-blue); margin-top:10px; font-weight:bold;">
+                ⚠️ 待機中: クイックスタート・ルールなどのPDFファイルを読み込ませてください。
+            </div>
+        </div>
+
+        <div id="systemMain" style="display: none;">
+            
+            <div class="live-controller">
+                <h4 style="color:var(--neon-blue); margin-bottom:8px; font-size:0.85em; text-transform:uppercase;">🎮 SIMULATE GAME EVENTS // セッション進行状況の切り替え</h4>
+                <div class="timeline-btns" id="eventTimeline"></div>
+            </div>
+
+            <div class="ai-concierge-panel" id="aiAnalysisBox"></div>
+
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab(0)">🏃‍♂️ ① DYNAMIC ACTIONS (状況連動手札)</div>
+                <div class="tab" onclick="switchTab(1)">📊 ② RISK / TREND REPORT (ルールリスク解説)</div>
+                <div class="tab" onclick="switchTab(2)">🔍 ③ REVERSE LOOKUP (やりたいことから逆引き)</div>
+            </div>
+
+            <div class="tab-content active">
+                <div class="cards" id="actionCards"></div>
+            </div>
+
+            <div class="tab-content">
+                <div class="risk-box" id="riskContent"></div>
+            </div>
+
+            <div class="tab-content">
+                <p style="font-size:0.85em; color:var(--neon-blue); font-weight:bold; margin-bottom:12px;">💬 「〜したい」という自由なセリフや行動を、読み込んだPDFデータから正確な技能ルールへマッピングします</p>
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <input type="text" id="reverseInput" style="width:55%; padding:10px; border: 1px solid #1e293b; background:#0f172a; color:white; border-radius:6px;">
+                    <button class="btn" onclick="triggerReverse(false)">RUN SEARCH (逆引き検索)</button>
+                    <button class="btn btn-refresh" onclick="triggerReverse(true)">🔄 UPDATE IDEAS (別のアプローチをひらめく)</button>
+                </div>
+                <div id="reverseOutput" class="info-box" style="display:none; background:#0b1329; border-left-color:var(--neon-blue);"></div>
+            </div>
+
+            <hr style="margin: 40px 0; border: 0; border-top: 1px solid #1e293b;">
+            <h4 style="color:var(--neon-green); font-size:0.9em; margin-bottom:12px;">🗣️ TRANSMIT ACTION DECLARATION</h4>
+            <div style="display: flex; gap: 15px;">
+                <input type="text" id="finalDeclaration" style="flex: 1; padding: 14px; background: #0f172a; border: 1px solid #1e293b; color: white; border-radius: 8px; font-size:0.95em;">
+                <button class="btn btn-success" onclick="alert('🚀 キーパーへアクション宣言を送信しました。ダイスロールの準備をしてください。')">EXECUTE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        let currentEventIndex = 0;
+        let rulebookFullText = ""; 
+        let pdfExtractedStats = { chars: 0, pages: 0 };
+        let reversePatternIndex = 0;
+
+        // PDFの文字解析
+        document.getElementById('pdfFileInput').addEventListener('change', function(e) {
+            let file = e.target.files[0];
+            if (!file) return;
+
+            let statusDiv = document.getElementById('pdfEngineStatus');
+            statusDiv.innerHTML = "⚡ JavaScript PDF Engine: 文字データをスキャン中...";
+            
+            let fileReader = new FileReader();
+            fileReader.onload = function() {
+                let typedarray = new Uint8Array(this.result);
+                pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                    let totalPages = pdf.numPages;
+                    let extractedText = "";
+                    let count = 0;
+
+                    for (let i = 1; i <= totalPages; i++) {
+                        pdf.getPage(i).then(function(page) {
+                            page.getTextContent().then(function(textContent) {
+                                let pageText = textContent.items.map(item => item.str).join(" ");
+                                extractedText += pageText + "\n";
+                                count++;
+
+                                if (count === totalPages) {
+                                    rulebookFullText = extractedText; 
+                                    pdfExtractedStats.chars = extractedText.length;
+                                    pdfExtractedStats.pages = totalPages;
+                                    
+                                    document.getElementById('uploadDropZone').classList.add('loaded');
+                                    statusDiv.innerHTML = `🟢 <b>本物のPDF解析に成功! (全 ${totalPages} ページ / ${extractedText.length} 文字)</b> ルールブックの完全同期が完了しました。`;
+                                    document.getElementById('systemMain').style.display = 'block';
+                                    
+                                    buildTimelineButtons();
+                                    updateLiveSystem();
+                                }
+                            });
+                        });
+                    }
+                });
+            };
+            fileReader.readAsArrayBuffer(file);
+        });
+
+        // OpenAI API リアルタイム連携
+        async function askRealAI(playerContext, isUpdate = false) {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            let cardsContainer = document.getElementById('actionCards');
+            
+            if (!apiKey) {
+                renderMockCards(playerContext);
+                return;
+            }
+
+            cardsContainer.innerHTML = `<div style="color:var(--neon-blue); padding:20px; font-weight:bold; width:100%;">⚡ OpenAI GPT-4o-miniがルールブックの該当箇所を精査して思考中...</div>`;
+            let trimmedRule = rulebookFullText.substring(0, 8000) + "\n... (省略) ...\n" + rulebookFullText.substring(rulebookFullText.length - 4000);
+
+            let systemPrompt = "あなたはクトゥルフ神話TRPG第7版の『何でも屋AI』です。現在の状況分析(analysis)を初心者に分かりやすく説明し、ルールブックのテキストを厳密に根拠にして、状況に合わせた【王道・成功率:高(main)】【技術・成功率:中(technical)】【奇策・成功率:低(rare)】の3つの手札を JSON形式で返してください。";
+            if (isUpdate) {
+                systemPrompt += "【最重要】直前の提案とは全く異なる、環境オブジェクトの利用や別技能によるアプローチをひらめいて、新鮮な3つの選択肢を提示してください。";
+            }
+
+            try {
+                const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini",
+                        messages: [
+                            {
+                                role: "system", 
+                                content: systemPrompt + " フォーム: {\"analysis\": \"解説文\", \"cards\": [{\"type\":\"main\",\"tag\":\"王道・成功率:高\",\"title\":\"タイトル\",\"text\":\"説明文\",\"pct\":70}, {\"type\":\"technical\",\"tag\":\"技術・成功率:中\",\"title\":\"タイトル\",\"text\":\"説明文\",\"pct\":20}, {\"type\":\"rare\",\"tag\":\"奇策・成功率:低\",\"title\":\"タイトル\",\"text\":\"説明文\",\"pct\":10}], \"risk_report\": \"ルールに基づくリスク解説文\"}"
+                            },
+                            { role: "user", content: `ルールデータ:\n${trimmedRule}\n\n状況:\n${JSON.stringify(playerContext)}` }
+                        ],
+                        response_format: { type: "json_object" }
+                    })
+                });
+                
+                const data = await response.json();
+                const aiDecision = JSON.parse(data.choices[0].message.content);
+                
+                document.getElementById('aiAnalysisBox').innerHTML = `🤖 <b>AIによる戦況アナライズ:</b><br><br>${aiDecision.analysis}`;
+                renderAICards(aiDecision);
+            } catch (error) {
+                console.error(error);
+                renderMockCards(playerContext);
+            }
+        }
+
+        function renderAICards(aiDecision) {
+            let cards = document.getElementById('actionCards');
+            let risk = document.getElementById('riskContent');
+            let dec = document.getElementById('finalDeclaration');
+            let p = document.getElementById('personalitySelect').value;
+            let prefix = (p === 'p2') ? "【大胆】" : "【慎重】";
+
+            cards.innerHTML = aiDecision.cards.map(c => `
+                <div class="card ${c.type}">
+                    <div>
+                        <span class="card-tag tag-${c.type}">${c.tag}</span>
+                        <div class="card-title">${prefix}${c.title}</div>
+                        <div class="card-body">${c.text}</div>
+                    </div>
+                    <div class="trend-container">
+                        <div class="trend-label"><span>この行動のダイス成功確率</span><span>${c.pct}%</span></div>
+                        <div class="trend-bar-bg"><div class="trend-bar-fill fill-${c.type}" style="width: ${c.pct}%"></div></div>
+                    </div>
+                </div>
+            `).join('');
+
+            risk.innerHTML = `
+                <h4 style="margin-top:0; color:var(--neon-rare); font-size:0.9em;">⚠️ PDF RULES MATCHED // リスク・リターン報告</h4>
+                <p>${aiDecision.risk_report}</p>
+            `;
+            dec.value = `【手札A：${aiDecision.cards[0].title}】を宣言してセッションを進行します！`;
+        }
+
+        // クトゥルフ専用・内蔵タイムラインモックデータ
+        const cocEvents = [
+            {
+                name: "1. 物置部屋の調査（探索）",
+                sit: "【探索フェイズ】1階物置部屋。目の前には、板で固くふさがれた怪しい食器棚があります。",
+                analysis: "🚨 <b>現在の戦況分析:</b> あなたは今、探索のスタート地点にいます。食器棚の戸は板で塞がれていますが、無理やり壊すと大きな音が出て危険です。あなたのステータスを分析した結果、安全な距離から懐中電灯で覗き込む<b>『手札A：板の隙間を覗く（目星）』を使うのが、最も成功確率が高く安全</b>です。",
+                cards: [
+                    {type:"main", tag:"王道・成功率:高", title:"板の隙間を覗く", text:"安全な距離から、あなたの得意技能 〈目星〉（[MEGANE]%） を使って中の構造や罠の有無を観察する。", pct:72},
+                    {type:"technical", tag:"技術・成功率:中", title:"ガラクタから工具捜索", text:"物置部屋のゴミ山から、板を強引にこじ開けられそうな鉄パイプやバールがないか〈目星〉で捜索する。", pct:25},
+                    {type:"rare", tag:"奇策・成功率:低", title:"板のオカルト傷分析", text:"板の打ち付け方に異常を感じる。儀式的な意味がないか、PDFルール12P準拠の〈オカルト〉で分析する。", pct:10}
+                ],
+                risk: "<b>● 隙間を覗くリスク：</b> 通常難易度。ダイスに失敗して『プッシュ（再挑戦）』をし、重ねて失敗すると食器棚が倒れて2階の怨霊に察知されます。",
+                q: "バールで強引にぶち壊したい"
+            },
+            {
+                name: "2. ダイス失敗（プッシュ発生）",
+                sit: "【判定フェイズ】⚠️ プレイヤーが〈目星〉ダイスをロールし「失敗」しました！ 部屋の床板が不穏にきしみ始めます。",
+                analysis: "⚠️ <b>現在の戦況分析:</b> 大ピンチです！最初の調査に失敗し、床がギシギシと音を立てています。ルールブック14Pに基づき、ここで諦めて部屋を出るのが一番安全ですが、どうしても中身が欲しい場合は、<b>床板が崩落するリスク（1D6ダメージ）を覚悟して『手札B：プッシュ（再挑戦）』を振るのが勝負の分かれ目</b>です！",
+                cards: [
+                    {type:"main", tag:"王道・成功率:高", title:"安全に諦めて退室", text:"これ以上深追いせず、一旦部屋を出てリビングなど別の部屋の調査に切り替える。", pct:60},
+                    {type:"technical", tag:"技術・成功率:中", title:"ダイスを『プッシュ』する", text:"「シャベルをテコにして無理やり覗き込む」とGMに宣言し、大代償リスクを背負って再度〈目星〉を振る。", pct:45},
+                    {type:"rare", tag:"奇策・成功率:低", title:"パニックによる破壊強行", text:"床のきしみにパニックを起こす。大声を上げてその場で食器棚をSTR（[STR]）任せに蹴り飛ばす。", pct:5}
+                ],
+                risk: "<b>⚠️ プッシュの確定リスク（ルールブック14P準拠）：</b> 次のダイスを失敗した場合、完全に足元の床板が崩落して地階へ落下（1D6ダメージ）する危険が生じます！",
+                q: "床のきしみを調べたい"
+            }
+        ];
+
+        function buildTimelineButtons() {
+            let container = document.getElementById('eventTimeline');
+            container.innerHTML = '';
+            cocEvents.forEach((ev, i) => {
+                let btn = document.createElement('button');
+                btn.className = `timeline-btn ${i === currentEventIndex ? 'active' : ''}`;
+                btn.innerText = ev.name;
+                btn.onclick = () => {
+                    currentEventIndex = i;
+                    buildTimelineButtons();
+                    updateLiveSystem();
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function updateLiveSystem() {
+            if (document.getElementById('systemMain').style.display === 'none') return;
+
+            let playerContext = {
+                game: "coc",
+                personality: document.getElementById('personalitySelect').value,
+                event_phase: currentEventIndex,
+                stats: {
+                    megane: document.getElementById('meganeInput').value,
+                    str: document.getElementById('strInput').value
+                }
+            };
+
+            askRealAI(playerContext, false);
+        }
+
+        function renderMockCards(playerContext) {
+            let cards = document.getElementById('actionCards');
+            let risk = document.getElementById('riskContent');
+            let dec = document.getElementById('finalDeclaration');
+            let queryInput = document.getElementById('reverseInput');
+            let analysisBox = document.getElementById('aiAnalysisBox');
+            
+            let currentData = cocEvents[playerContext.event_phase];
+            let prefix = (playerContext.personality === 'p2') ? "【大胆】" : "【慎重】";
+
+            analysisBox.innerHTML = currentData.analysis;
+            
+            cards.innerHTML = currentData.cards.map(c => {
+                let processedText = c.text.replace("[MEGANE]", playerContext.stats.megane).replace("[STR]", playerContext.stats.str);
+                return `
+                    <div class="card ${c.type}">
+                        <div>
+                            <span class="card-tag tag-${c.type}">${c.tag}</span>
+                            <div class="card-title">${prefix}${c.title}</div>
+                            <div class="card-body">${processedText}</div>
+                        </div>
+                        <div class="trend-container">
+                            <div class="trend-label"><span>この行動のダイス成功確率</span><span>${c.pct}%</span></div>
+                            <div class="trend-bar-bg"><div class="trend-bar-fill fill-${c.type}" style="width: ${c.pct}%"></div></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            risk.innerHTML = `
+                <h4 style="margin-top:0; color:var(--neon-rare); font-size:0.9em;">⚠️ PDF RULES MATCHED // リスク・リターン報告 (MOCK-DATA)</h4>
+                <p>${currentData.risk}</p>
+            `;
+
+            queryInput.value = currentData.q;
+            dec.value = `【手札A：${currentData.cards[0].title}】を宣言してゲームを進行します！`;
+        }
+
+        function switchTab(index) {
+            let tabs = document.querySelectorAll('.tab');
+            let contents = document.querySelectorAll('.tab-content');
+            tabs.forEach((t, i) => {
+                t.classList.toggle('active', i === index);
+                contents[i].classList.toggle('active', i === index);
+            });
+        }
+
+        // 🔍 クトゥルフ専用・逆引きローテーション
+        async function triggerReverse(isUpdate = false) {
+            let query = document.getElementById('reverseInput').value;
+            let out = document.getElementById('reverseOutput');
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            out.style.display = 'block';
+            
+            if (isUpdate) {
+                reversePatternIndex = (reversePatternIndex + 1) % 3;
+            } else {
+                reversePatternIndex = 0;
+            }
+
+            if (apiKey) {
+                out.innerHTML = `<strong>📡 COGNITIVE SEARCHING... (クトゥルフ第7版の最適解を抽出中)</strong>`;
+                let trimRule = rulebookFullText.substring(0, 5000);
+                let updateInstruction = isUpdate ? "前回提示した技能とは異なる、能力値の直接対抗ロールやアイテムの機転を利かせた消費など、斜め上の解決アプローチを提案してください。" : "";
+
+                try {
+                    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                        body: JSON.stringify({
+                            model: "gpt-4o-mini",
+                            messages: [
+                                { role: "system", content: `あなたは新クトゥルフ神話TRPG第7版の逆引きシステムです。ユーザーの『〜したい』という意図に対し、ルールブックのルールや技能を根拠にして処理方法を解説してください。${updateInstruction}` },
+                                { role: "user", content: `ルールデータ:\n${trimRule}\n\n意図: ${query}` }
+                            ]
+                        })
+                    });
+                    const data = await response.json();
+                    out.innerHTML = `<strong>📡 OpenAI COGNITIVE SEARCH (解釈アプローチ ${reversePatternIndex + 1})</strong><br><br>${data.choices[0].message.content}`;
+                    return;
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            // モックローテーション
+            const cocPatterns = [
+                `<strong>📡 AI RULE MAPPING (アプローチ①：正規の技能提案)</strong><br><br>「${query}」の意図を検出。ルールブック11〜13Pをスキャンした結果、これは通常の<b>【近接戦闘（格闘）】</b>または<b>【機械修理】</b>技能を消費して板を物理的にこじ開ける処理としてマッピング可能です！`,
+                `<strong>📡 AI RULE MAPPING (アプローチ②：能力値による強行突破)</strong><br><br>🔄 アプローチを更新しました。手持ちの技能が足りない場合、ルールブック14Pの記述に基づき、あなたの高い筋力<b>【STR（筋力）のハード成功】</b>を消費するか、周囲の仲間と筋力を合算する『STR対抗ロール』をキーパーに提案する切り口が有効です！`,
+                `<strong>📡 AI RULE MAPPING (アプローチ③：外部オブジェクトの機転利用)</strong><br><br>🔄 アプローチを更新しました。肉体を使わないルートです。ルールブック15Pの<b>【幸運】</b>ロールを消費し、「物置部屋のガラクタ山から、テコの原理に使える手頃な鉄パイプを偶然発見した」という環境利用をキーパーに交渉できます。`
+            ];
+            out.innerHTML = cocPatterns[reversePatternIndex];
+        }
+
+        // 初期化用（最初からクトゥルフモード）
+        function selectGame(game) {
+            // クトゥルフ固定のため、Timeline構築のみ実行
+            buildTimelineButtons();
+            updateLiveSystem();
+        }
+    </script>
+</body>
+</html>

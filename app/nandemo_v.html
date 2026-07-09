@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>性格＆トレンド連動型 AI『何でも屋』コンシェルジュ</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; display: flex; background: #f4f6f9; color: #333; }
+        .sidebar { width: 320px; background: #1e293b; color: white; padding: 20px; box-sizing: border-box; height: 100vh; position: fixed; overflow-y: auto; }
+        .main-content { margin-left: 320px; padding: 40px; width: calc(100% - 320px); box-sizing: border-box; }
+        h1, h2, h3, h4 { margin-top: 0; }
+        .game-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+        .game-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; background: #475569; color: #cbd5e1; transition: 0.3s; font-size: 0.85em; }
+        .game-btn.active { background: #3b82f6; color: white; box-shadow: 0 4px 6px rgba(59,130,246,0.3); }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-size: 0.9em; color: #cbd5e1; font-weight: bold; }
+        .input-group input, .input-group textarea, .input-group select { width: 100%; padding: 8px; border-radius: 4px; border: none; box-sizing: border-box; }
+        .info-box { background: #e2e8f0; border-left: 5px solid #3b82f6; padding: 15px; border-radius: 4px; margin-bottom: 20px; font-size: 0.95em; line-height: 1.5; }
+        .tabs { display: flex; border-bottom: 2px solid #cbd5e1; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; cursor: pointer; transition: 0.3s; font-weight: bold; color: #64748b; }
+        .tab.active { border-bottom: 4px solid #3b82f6; color: #3b82f6; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .cards { display: flex; gap: 15px; }
+        .card { flex: 1; background: #e6f4ea; border: 1px solid #34a853; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); font-size: 0.9em; display: flex; flex-direction: column; justify-content: space-between; }
+        .trend-badge { display: inline-block; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; margin-top: 10px; align-self: flex-start; }
+        .trend-badge.rare { background: #fee2e2; color: #ef4444; }
+        .trend-badge.popular { background: #dbeafe; color: #2563eb; }
+        .risk-box { background: #fff3cd; border: 1px solid #ffeba2; padding: 15px; border-radius: 8px; }
+        .btn { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: #2563eb; }
+        .btn-success { background: #10b981; }
+        .btn-success:hover { background: #059669; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h3>🎮 デモ用・ゲーム選択</h3>
+        <div class="game-selector">
+            <button id="btnCoC" class="game-btn active" onclick="selectGame('coc')">クトゥルフ神話</button>
+            <button id="btnPoke" class="game-btn" onclick="selectGame('poke')">ポケモンカード</button>
+        </div>
+
+        <hr style="border-color: #334155; margin-bottom: 20px;">
+
+        <h3 id="sidebarTitle">👤 探索者設定</h3>
+        
+        <div class="input-group">
+            <label>キャラクター名</label>
+            <input type="text" id="charName" value="ジョン・ドゥ">
+        </div>
+
+        <div class="input-group">
+            <label style="color: #60a5fa;">🧠 性格 / バックストーリー</label>
+            <select id="personalitySelect" onchange="updateValues()">
+                <option value="coward" id="opt1">臆病で慎重なオカルティスト</option>
+                <option value="brave" id="opt2">血気盛んで向こう見ずな元軍人</option>
+            </select>
+        </div>
+
+        <div id="cocInputs">
+            <div class="input-group">
+                <label>STR (筋力)</label>
+                <input type="number" id="strInput" value="60" oninput="updateValues()">
+            </div>
+            <div class="input-group">
+                <label>〈目星〉 技能値 (%)</label>
+                <input type="number" id="meganeInput" value="25" oninput="updateValues()">
+            </div>
+        </div>
+
+        <div id="pokeInputs" style="display: none;">
+            <div class="input-group">
+                <label>自分のバトル場</label>
+                <input type="text" id="pokeBattle" value="ピカチュウex (残りHP: 90)">
+            </div>
+            <div class="input-group">
+                <label>手札の重要カード</label>
+                <input type="text" id="pokeHandCard" value="博士の研究, 雷エネルギー, ネストボール">
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <h1 id="mainTitle">🧙‍♂️ TRPG初心者サポート AI『何でも屋』</h1>
+        <p style="color: #666; font-size: 1.1em; margin-bottom: 25px;">「全員同じ行動をしてつまらない」を解決。性格×他プレイヤーの選択ログ（トレンド）から、あなただけのドラマを作ります。</p>
+
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <h3 id="pdfTitle">📜 1. クトゥルフ神話TRPGルール.pdf の読み込み</h3>
+            <input type="file" accept=".pdf" onchange="simulateUpload()" id="pdfFile">
+            <p id="uploadStatus" style="color: #475569; font-size: 0.9em; margin-top: 8px; background: #f1f5f9; padding: 8px; border-radius: 4px;">💡 <b>審査員アピール：</b> PDFから「ルール」を、左側から「性格」を抽出。さらにサーバー側の「他人のプレイログ」を統合して処理します。</p>
+        </div>
+
+        <div id="systemMain" style="display: none;">
+            <div class="info-box" id="situationBox"></div>
+
+            <h3>💡 3. AIコンシェルジュからの手札提案</h3>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab(0)">🏃‍♂️ ① 性格連動型アクション</div>
+                <div class="tab" onclick="switchTab(1)">📊 ② リスク ＆ トレンド予測</div>
+            </div>
+
+            <div class="tab-content active">
+                <p><strong>🌲 あなたの「性格」に基づき、AIがあなたのキャラらしく動ける選択肢を提案します。</strong></p>
+                <div class="cards" id="actionCards"></div>
+            </div>
+
+            <div class="tab-content">
+                <p><strong>📊 他のプレイヤーが取った「行動の統計データ（トレンド）」を可視化</strong></p>
+                <div class="risk-box" id="riskContent"></div>
+            </div>
+
+            <hr style="margin: 30px 0; border: 0; border-top: 1px solid #cbd5e1;">
+            <h3>🗣️ アクションを宣言しよう</h3>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="finalDeclaration" style="flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 4px;" value="">
+                <button class="btn btn-success" onclick="alert('🎉 あなただけのオリジナルな行動が確定しました！')">行動を確定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentGame = 'coc';
+
+        function selectGame(game) {
+            currentGame = game;
+            
+            document.getElementById('btnCoC').classList.toggle('active', game === 'coc');
+            document.getElementById('btnPoke').classList.toggle('active', game === 'poke');
+            document.getElementById('cocInputs').style.display = game === 'coc' ? 'block' : 'none';
+            document.getElementById('pokeInputs').style.display = game === 'poke' ? 'block' : 'none';
+            
+            let select = document.getElementById('personalitySelect');
+            select.innerHTML = '';
+            
+            if (game === 'coc') {
+                document.getElementById('sidebarTitle').innerText = "👤 探索者設定";
+                document.getElementById('pdfTitle').innerText = "📜 1. クトゥルフ神話TRPGルール.pdf の読み込み";
+                select.innerHTML = `
+                    <option value="coward">臆病で慎重なオカルティスト</option>
+                    <option value="brave">血気盛んで向こう見ずな元軍人</option>
+                `;
+            } else {
+                document.getElementById('sidebarTitle').innerText = "🃏 あなたの盤面データ";
+                document.getElementById('pdfTitle').innerText = "📜 1. ポケモンカードルール.pdf の読み込み";
+                select.innerHTML = `
+                    <option value="safe">堅実に盤面を育てる安定志向</option>
+                    <option value="gamble">一撃必殺を狙う超攻撃的ギャンブラー</option>
+                `;
+            }
+            
+            document.getElementById('systemMain').style.display = 'none';
+            document.getElementById('pdfFile').value = "";
+        }
+
+        function simulateUpload() {
+            document.getElementById('systemMain').style.display = 'block';
+            updateValues();
+        }
+
+        function switchTab(index) {
+            let tabs = document.querySelectorAll('.tab');
+            let contents = document.querySelectorAll('.tab-content');
+            tabs.forEach((t, i) => {
+                t.classList.toggle('active', i === index);
+                contents[i].classList.toggle('active', i === index);
+            });
+        }
+
+        function updateValues() {
+            let p = document.getElementById('personalitySelect').value;
+            let sitBox = document.getElementById('situationBox');
+            let cards = document.getElementById('actionCards');
+            let risk = document.getElementById('riskContent');
+            let dec = document.getElementById('finalDeclaration');
+
+            if (currentGame === 'coc') {
+                let str = document.getElementById('strInput').value;
+                let megane = document.getElementById('meganeInput').value;
+
+                sitBox.innerHTML = `<strong>📌 2. 現在のシチュエーション（物置部屋）</strong><br><br>目の前には、板で固くふさがれた怪しい食器棚があります。`;
+
+                if (p === 'coward') {
+                    cards.innerHTML = `
+                        <div class="card"><div><strong style="color:#0284c7;">【手札A：慎重な観察】</strong><br><br>いきなり触るのは危険だ。懐中電灯で板の隙間を照らし、安全な距離から<strong>〈目星〉（${megane}%）</strong>で罠や中に隠されたものがないか観察する。</div><span class="trend-badge popular">王道行動 (72%の人が選択)</span></div>
+                        <div class="card"><div><strong style="color:#b45309;">【手札B：背後を警戒】</strong><br><br>2階からの物音が気になる。食器棚を調べる仲間の背後をカバーするため、廊下に向け<strong>〈聞き耳〉</strong>を立てて奇襲を警戒する。</div><span class="trend-badge">協調行動 (18%の人が選択)</span></div>
+                        <div class="card"><div><strong style="color:#ef4444;">【手札C：オカルト的逆張り】</strong><br><br>この板の打ち付け方は普通の人間ではない。カルトの儀式の痕跡の可能性を疑い、周囲に刻まれた傷を<strong>〈オカルト〉</strong>で分析する。</div><span class="trend-badge rare">レア行動 (10%の人が選択)</span></div>
+                    `;
+                    risk.innerHTML = `
+                        <h4 style="margin-top:0; color:#b78103;">📈 トレンド＆リスク予測（臆病な性格ベース）</h4>
+                        <p>多くのプレイヤーは『手札A：目星』で無難に調査を進めます。しかし、あなたがもし<strong>『手札C：オカルト』というレア行動（選択率10%）</strong>を選んだ場合、他の卓とは違う、あなただけの隠された邪教の手掛かりを見つけ出すオリジナルな展開が生まれます！</p>
+                    `;
+                    dec.value = "手札Cの『オカルトの知識を使って、この板に呪術的な意味がないか調べます』";
+                } else {
+                    cards.innerHTML = `
+                        <div class="card"><div><strong style="color:#ef4444;">【手札A：豪快な破壊】</strong><br><br>調べる時間など無駄だ！手持ちの工具やバールを使い、あなたの筋力 <strong>STR: ${str}</strong> を乗せて力任せに板を粉砕する！</div><span class="trend-badge popular">人気行動 (65%の人が選択)</span></div>
+                        <div class="card"><div><strong style="color:#0284c7;">【手札B：武器の捜索】</strong><br><br>いつ敵が出てもいいように、物置部屋のガラクタ山から武器になりそうな頑丈な鉄パイプや大ぶりのナイフを〈目星〉で捜し出す。</div><span class="trend-badge">戦闘準備 (25%の人が選択)</span></div>
+                        <div class="card"><div><strong style="color:#b45309;">【手札C：挑発的逆張り】</strong><br><br>隠れている化け物をあぶり出すため、あえて食器棚を激しく叩いて大きな音を立て、大声で怒鳴って周囲を威圧する。</div><span class="trend-badge rare">レア行動 (10%の人が選択)</span></div>
+                    `;
+                    risk.innerHTML = `
+                        <h4 style="margin-top:0; color:#b78103;">📈 トレンド＆リスク予測（好戦的な性格ベース）</h4>
+                        <p>元軍人のあなたの能力なら、最も選ばれている『手札A：破壊』がスカッと物語を進められます。しかし、<strong>選択率がわずか10%の『手札C：挑発行動』</strong>を選ぶと、本来なら後半に出てくるボスを前倒しで引きずり出すような、あなたの卓だけの超ハラハラするオリジナル展開を巻き起こせます！</p>
+                    `;
+                    dec.value = "手札Aの『めんどくさい！持っているバールで板をバキバキに叩き壊します！』";
+                }
+
+            } else {
+                // ポケカ
+                sitBox.innerHTML = `<strong>📌 2. 現在のシチュエーション</strong><br><br>中盤戦。お互いのベンチが育ち、一触即発の膠着状態です。`;
+                
+                if (p === 'safe') {
+                    cards.innerHTML = `
+                        <div class="card"><div><strong style="color:#1d4ed8;">【手札A：ベンチの育成】</strong><br><br>グッズでたねポケモンをベンチに出し、次のアタッカーを確実に育てる。</div><span class="trend-badge popular">定石 (80%が選択)</span></div>
+                        <div class="card"><div><strong style="color:#10b981;">【手札B：手札リフレッシュ】</strong><br><br>『博士の研究』を使い、エネルギーを確実に引きにいく。</div><span class="trend-badge">手堅い一手 (15%が選択)</span></div>
+                        <div class="card"><div><strong style="color:#ef4444;">【手札C：逆張りのパス】</strong><br><br>あえて攻撃せず番を終わり、相手の焦りを誘う。</div><span class="trend-badge rare">超レア (5%が選択)</span></div>
+                    `;
+                    risk.innerHTML = `<h4>📈 トレンド（安定志向）</h4><p>8割のプレイヤーが取る手堅い一手です。負けないプレイをするならここですが、手札Cを選ぶと相手を大混乱させる心理戦に持ち込めます。</p>`;
+                    dec.value = "手札Aの『ベンチポケモンを育てて、次の番の安全を確保します』";
+                } else {
+                    cards.innerHTML = `
+                        <div class="card"><div><strong style="color:#ef4444;">【手札A：フルパワー特攻】</strong><br><br>手札のエネルギーを全て注ぎ込み、今すぐ最大火力でワザを叩き込む！</div><span class="trend-badge popular">人気 (70%が選択)</span></div>
+                        <div class="card"><div><strong style="color:#1d4ed8;">【手札B：ボスの指令】</strong><br><br>相手の裏にいる手負いのポケモンを引きずり出して倒す。</div><span class="trend-badge">奇襲 (25%が選択)</span></div>
+                        <div class="card"><div><strong style="color:#b45309;">【手札C：レアな自傷コンボ】</strong><br><br>あえて自分のHPを削るワザを使い、逆転カードの発動条件を満たす。</div><span class="trend-badge rare">ロマン砲 (5%が選択)</span></div>
+                    `;
+                    risk.innerHTML = `<h4>📈 トレンド（ギャンブラー）</h4><p>5%のプレイヤーしか成功させていない『手札C：ロマン砲』を狙える盤面です。決まれば一発逆転、ハッカソンで言えば最高に盛り上がるドラマが生まれます！</p>`;
+                    dec.value = "手札Cの『リスクを承知で、大逆転を狙うコンボに賭けます！』";
+                }
+            }
+        }
+    </script>
+</body>
+</html>
