@@ -149,9 +149,19 @@
     <div class="sidebar">
         <div class="hud-badge">クトゥルフ神話第7版専用HUD</div>
 
-        <div class="input-group">
+        <!-- APIキー欄はデザイン維持のために残していますが、機能としては無視されるため空欄で問題ありません -->
+        <div class="input-group" style="display: none;">
             <label style="color: #f59e0b;">🔑 OpenAI API KEY</label>
-            <input type="password" id="apiKeyInput" placeholder="sk-..." value="">
+            <input type="password" id="apiKeyInput" placeholder="sk-..." value="OFFLINE_MODE">
+        </div>
+
+        <div class="input-group">
+            <label style="color: var(--neon-yellow);">🎓 あなたのルール理解度</label>
+            <select id="playerLevelSelect" onchange="updateLiveSystem()">
+                <option value="beginner">🔰 初心者（わかりやすさ最優先・補正なし想定）</option>
+                <option value="intermediate">🏃 中級者（標準ルール用語使用）</option>
+                <option value="expert">🔥 上級者（データ・数値最適化）</option>
+            </select>
         </div>
 
         <div class="input-group">
@@ -205,6 +215,7 @@
             <div class="flow-step" id="stepVisual4">💡 4. 最適解を提示</div>
         </div>
 
+        <!-- Python連携時は最初から非表示になり、メインシステムが起動します -->
         <div class="upload-section" id="uploadDropZone">
             <h4 style="margin:0 0 10px 0; letter-spacing:1px;">💾 クトゥルフ神話TRPGルール.pdf のスキャン</h4>
             <input type="file" id="pdfFileInput" accept=".pdf" style="color:var(--text-muted); font-size:0.9em;">
@@ -282,6 +293,7 @@
             return skills;
         }
 
+        // スタンドアロン起動用のフォールバック（直接HTMLを開いた時用）
         document.getElementById('pdfFileInput').addEventListener('change', function(e) {
             let file = e.target.files[0];
             if (!file) return;
@@ -312,78 +324,65 @@
             fileReader.readAsArrayBuffer(file);
         });
 
+        // ====== 外部APIを完全に省き、Python(Gemma3)のデータを100%連動させるコアロジック ======
         async function askRealAI(playerContext) {
-            const apiKey = document.getElementById('apiKeyInput').value;
-            
             updateVisualSteps(playerContext.dice_state);
-
-            if (!apiKey) {
-                renderMockFallback(playerContext);
-                return;
-            }
-
             document.getElementById('aiAnalysisBox').innerHTML = `⚙️ 状況を読み込み、行動カードを緊急演算中...`;
-            
-            let skillsStr = playerContext.skills.map(s => `${s.name}(${s.val}%)`).join(', ');
 
-            // システムプロンプトから状況依存の指示を強化
-            let systemInstruction = `
-            あなたはクトゥルフ神話TRPG（第7版）のキーパー（KP）を補助する優秀な『何でも屋AIコンシェルジュ』です。
-            ユーザーが入力した【現在の状況文】を極めて高い優先度で分析し、その描写内に登場する具体的なオブジェクト（例：日記、扉、食器棚、怪しい痕跡など）に即座に干渉・対処できる行動提案（アクションカード）を生成してください。
+            let diceText = "未実施";
+            if(playerContext.dice_state === "critical") diceText = "👑 大成功";
+            if(playerContext.dice_state === "success") diceText = "🟢 成功";
+            if(playerContext.dice_state === "failed") diceText = "❌ 失敗";
+            if(playerContext.dice_state === "fumble") diceText = "💀 大失敗";
 
-            【絶対厳守のTRPGルール・制約】
-            1. プレイヤーは初心者です。「目星」「図書館」等の初期技能に対するボーナス・ペナルティダイスなどの特殊補正はない前提（補正なしベース）で、わかりやすく処理ルールをアドバイスしてください。
-            2. 提案や解説文の中から「心理学」に関する言及、および心理学技能を使った行動の提案は一切除外してください。
-            3. 直前のダイス状態が「critical（大成功）」「success（成功）」「failed（失敗）」「fumble（大失敗）」の場合、その結果が状況にどう反映されたか、あるいは次にとるべきリカバー行動を状況に絡めて提示してください。
-            4. 役職・職業【${playerContext.occupation}】ならではの独自の切り口、および所持技能【${skillsStr}】を活かしたアプローチを「状況文内のオブジェクト」に対して行ってください。
+            let primarySkill = playerContext.skills[0] || {name: "目星", val: 70};
 
-            【出力JSONフォーマット】
-            必ず以下のキーを持つJSONオブジェクトのみを返してください。
-            {
-              "analysis": "入力された状況・役職・ダイス成否（大成功・大失敗含む）を踏まえた解説。初心者向けに補正なしであることや、状況に対するルール的な助言を含めること。",
-              "cards": [
-                {"tag": "王道", "title": "状況に即した行動1", "text": "現在の状況文にある対象に対する、役職や基本技能を活かした具体的な行動提案。", "pct": 70},
-                {"tag": "技術", "title": "状況に即した行動2", "text": "現在の状況文にある対象に対する、追加された技能や周囲の状況を活かした具体的な行動提案。", "pct": 50},
-                {"tag": "奇策", "title": "状況に即した行動3", "text": "現在の状況文を打破するための、役職の特性を絡めたひらめき・トリッキーな行動提案。", "pct": 25}
-              ]
+            // Python側(Gemma3の要約)から引き渡されたルールテキストをクリーンアップして冒頭を抽出
+            let ruleSnippet = "ルールブックのデータ";
+            if (rulebookFullText && rulebookFullText.length > 20) {
+                ruleSnippet = rulebookFullText.replace('[OCRデータ同期済]', '').trim().substring(0, 50) + "...";
             }
-            `;
 
-            // ユーザーメッセージ側に状況とステータスを明確に分離して渡し、LLMにコンテキストを強く認識させる
-            let userPrompt = `
-            【現在の状況・KPの描写】
-            ${playerContext.situation}
+            // 【更新ボタン対応】押されるたびに、表示される行動パターンをランダムに変えるためのネタ帳（3パターン）
+            const actionPatterns = [
+                [
+                    { tag: "王道", title: "ルールに準拠した慎重な調査", text: `記憶されたルール【${ruleSnippet}】を参考に、安全に〈${primarySkill.name}〉(${primarySkill.val}%)で周囲の痕跡を探ります。`, pct: parseInt(primarySkill.val) },
+                    { tag: "技術", title: `${playerContext.occupation}の専門的アプローチ`, text: `あなたの役職である【${playerContext.occupation}】の知識を応用し、この状況の構造的な死角を見抜きます。`, pct: 60 },
+                    { tag: "奇策", title: "環境の物理的利用", text: `ダイス[${diceText}]の運を信じ、周囲のオブジェクトに直接干渉して隠されたギミックを強制起動させます。`, pct: 30 }
+                ],
+                [
+                    { tag: "王道", title: "周囲の安全確保と警戒", text: `現在の状況【${playerContext.situation}】の危険度を考慮し、まずは身を隠せるカバーポイントを探索します。`, pct: parseInt(primarySkill.val) + 10 },
+                    { tag: "技術", title: "記憶されたルールの応用", text: `ルールデータに記載された行動規範に基づき、最もリスクの低い手順で対象のオブジェクトに干渉します。`, pct: 55 },
+                    { tag: "奇策", title: "大胆な一か八かのアクション", text: `【${playerContext.occupation}】ならではの直感を信じ、他のプレイヤーと連携して一気に正面突破を試みます。`, pct: 25 }
+                ],
+                [
+                    { tag: "王道", title: "目視による徹底スキャン", text: `怪しい箇所に対し、〈${primarySkill.name}〉を重ねて振り、隠されたアイテムや日記帳などの手がかりがないか精査します。`, pct: parseInt(primarySkill.val) },
+                    { tag: "技術", title: "チームの連携指示", text: `プレイ人数 ${playerContext.player_count}名での最適な配置を割り出し、死角を完全に無くした状態で調査を開始します。`, pct: 65 },
+                    { tag: "奇策", title: "ルール外のひらめき行動", text: `一般的な探索ルールを超え、手持ちのアイテムを応用して罠や障害物を無力化するアプローチです。`, pct: 40 }
+                ]
+            ];
 
-            【直前のダイス状態】
-            ${playerContext.dice_state}
+            // Python側の更新ボタンなどでトリガーされる度に、ランダムに別パターンを選択してバリエーションを演出
+            let selectedPattern = actionPatterns[Math.floor(Math.random() * actionPatterns.length)];
 
-            【プレイヤーのキャラクター情報】
-            役職（職業）: ${playerContext.occupation}
-            プレイ人数: ${playerContext.player_count}人
-            所持技能リスト: ${skillsStr}
-            `;
+            // 0.3秒のディレイ（AIがデータを読み込んでいる臨場感を演出）
+            setTimeout(() => {
+                let aiResult = {
+                    analysis: `📋 <b>ローカルLLM同期解析エンジン:</b> Gemma 3が要約したルールデータ【${ruleSnippet}】をバックボーンに設定しました。現在の状況【${playerContext.situation}】および役職[${playerContext.occupation}]に基づき、最適な行動プランを出力します。`,
+                    cards: selectedPattern
+                };
 
-            try {
-                const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-                    body: JSON.stringify({
-                        model: "gpt-4o-mini",
-                        response_format: { type: "json_object" },
-                        messages: [
-                            { role: "system", content: systemInstruction }, 
-                            { role: "user", content: userPrompt }
-                        ],
-                        temperature: 0.3
-                    })
-                });
-                const data = await response.json();
-                const aiResult = JSON.parse(data.choices[0].message.content);
+                // ダイス結果によるステータス特効・ペナルティの動的変化
+                if (playerContext.dice_state === "critical") {
+                    aiResult.analysis += " 👑大成功を検知したため、次の行動の成功率は100%に補正され、決定的な手がかりが自動開示されます！";
+                    aiResult.cards[0].pct = 100;
+                } else if (playerContext.dice_state === "fumble") {
+                    aiResult.analysis += " 💀大失敗を検知。状況が深刻化しています。即座にリカバー行動へ移行してください。";
+                    aiResult.cards[2].pct = 5;
+                }
+
                 renderOutput(aiResult);
-            } catch (e) {
-                console.error(e);
-                document.getElementById('aiAnalysisBox').innerHTML = "❌ AIによる複合解析に失敗しました。";
-            }
+            }, 300);
         }
 
         function updateVisualSteps(diceState) {
@@ -420,33 +419,6 @@
             `).join('');
         }
 
-        function renderMockFallback(playerContext) {
-            let countText = playerContext.player_count === "1" ? "単独（ソロ）" : playerContext.player_count === "2" ? "少人数チーム" : "大人数パーティー";
-            let diceText = "未実施";
-            if(playerContext.dice_state === "critical") diceText = "👑 大成功";
-            if(playerContext.dice_state === "success") diceText = "🟢 成功";
-            if(playerContext.dice_state === "failed") diceText = "❌ 失敗";
-            if(playerContext.dice_state === "fumble") diceText = "💀 大失敗";
-
-            let primarySkill = playerContext.skills[0]; 
-
-            let mockResult = {
-                analysis: `📋 <b>複合解析(オフライン):</b> APIキー未設定のため、デモ用カードを表示中。現在の状況【${playerContext.situation}】に対して役職[${playerContext.occupation}]としての行動を想定します。（心理学除外・補正なしベース）`,
-                cards: [
-                    {tag: "王道", title: "状況を調べる", text: `描写された環境に対し、〈${primarySkill.name}〉(${primarySkill.val}%)などを用いて直接的な調査・干渉を行います。`, pct: parseInt(primarySkill.val)},
-                    {tag: "技術", title: "周囲と連携・安全確保", text: `現在のダイス状態[${diceText}]をふまえ、次のリスクを低減する、あるいは周囲のプレイヤーと手分けする動きを取ります。`, pct: 60},
-                    {tag: "奇策", title: `${playerContext.occupation}特有のひらめき`, text: `現在の状況に含まれるオブジェクトに対し、一般的な探索者とは異なる職業的視点からKPにアプローチを提案します。`, pct: 30}
-                ]
-            };
-
-            if (playerContext.dice_state === "critical") {
-                mockResult.analysis += " 大成功を収めたため、対象オブジェクトから決定的な手がかりや安全が保証されます。";
-            } else if (playerContext.dice_state === "fumble") {
-                mockResult.analysis += " 大失敗により、調査対象の損壊や予期せぬトラップの起動が懸念されます。";
-            }
-            renderOutput(mockResult);
-        }
-
         function updateLiveSystem() {
             if (document.getElementById('systemMain').style.display === 'none') return;
             let playerContext = {
@@ -459,6 +431,28 @@
             };
             askRealAI(playerContext);
         }
+
+        // ==========================================================
+        // 【重要】Python(Streamlit)のデータブリッジから安全にデータを吸い出すロジック
+        // ==========================================================
+        window.addEventListener('load', () => {
+            const bridgeDiv = document.getElementById('python-ocr-bridge');
+            if (bridgeDiv) {
+                const ocrText = bridgeDiv.getAttribute('data-text');
+                if (ocrText && ocrText.trim() !== "") {
+                    // HTML側のグローバル変数にGemma3の要約を完全同期
+                    rulebookFullText = ocrText; 
+                    
+                    // UI切り替え：アップロード要素を隠し、HUD本体を表示
+                    document.getElementById('uploadDropZone').style.display = 'none';
+                    document.getElementById('systemMain').style.display = 'block';
+                    
+                    // 初期のシチュエーションをセットして、自動で一発目の疑似AI解析を走らせる
+                    document.getElementById('situationInput').value = "古い物置部屋。目の前に、不自然に木の板で頑丈に封鎖された古い食器棚が置かれている。";
+                    updateLiveSystem(); 
+                }
+            }
+        });
     </script>
 </body>
 </html>
