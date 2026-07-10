@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>クトゥルフ神話TRPG専用 AI『何でも屋』LIVE HUD</title>
+    <title>クトゥルフ神話TRPG専用AI『何でも屋』LIVE HUD</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         :root {
@@ -149,25 +149,19 @@
     <div class="sidebar">
         <div class="hud-badge">クトゥルフ神話第7版専用HUD</div>
 
-        <!-- APIキー欄はデザイン維持のために残していますが、機能としては無視されるため空欄で問題ありません -->
-        <div class="input-group" style="display: none;">
-            <label style="color: #f59e0b;">🔑 OpenAI API KEY</label>
-            <input type="password" id="apiKeyInput" placeholder="sk-..." value="OFFLINE_MODE">
-        </div>
-
         <div class="input-group">
-            <label style="color: var(--neon-yellow);">🎓 あなたのルール理解度</label>
+            <label style="color: var(--neon-yellow);">あなたのレベル</label>
             <select id="playerLevelSelect" onchange="updateLiveSystem()">
-                <option value="beginner">🔰 初心者（わかりやすさ最優先・補正なし想定）</option>
-                <option value="intermediate">🏃 中級者（標準ルール用語使用）</option>
-                <option value="expert">🔥 上級者（データ・数値最適化）</option>
+                <option value="beginner">🔰 初心者</option>
+                <option value="intermediate">中級者</option>
+                <option value="expert">上級者</option>
             </select>
         </div>
 
         <div class="input-group">
             <label style="color: var(--neon-green);">👥 プレイ人数（自分を含むPLの数）</label>
             <select id="playerCountSelect" onchange="updateLiveSystem()">
-                <option value="1">👤 タイマン / ソロ（自分1人だけ）</option>
+                <option value="1">👤 ソロ（1人）</option>
                 <option value="2">👥 少人数パーティー（2〜3人）</option>
                 <option value="4">👥 大人数パーティー（4人以上）</option>
             </select>
@@ -177,12 +171,12 @@
         <h3 style="font-size:1.1em; color:var(--neon-blue);">👤 2. 役職・ステータス確認</h3>
         
         <div class="input-group">
-            <label>💼 あなたの役職（職業）自由入力</label>
+            <label>あなたの役職を入力してください</label>
             <input type="text" id="occupationInput" value="私立探偵" placeholder="例：高校生、刑事、精神科医など" oninput="updateLiveSystem()">
         </div>
 
         <div class="input-group">
-            <label>📋 所持技能値リスト (%)</label>
+            <label>技能値リスト</label>
             <div class="skills-container" id="skillsContainer">
                 <div class="skill-row">
                     <input type="text" value="目星" readonly style="background: #1e293b; color: #cbd5e1;">
@@ -368,7 +362,7 @@
             // 0.3秒のディレイ（AIがデータを読み込んでいる臨場感を演出）
             setTimeout(() => {
                 let aiResult = {
-                    analysis: `📋 <b>ローカルLLM同期解析エンジン:</b> Gemma 3が要約したルールデータ【${ruleSnippet}】をバックボーンに設定しました。現在の状況【${playerContext.situation}】および役職[${playerContext.occupation}]に基づき、最適な行動プランを出力します。`,
+                    analysis: ` <b>ローカルLLM同期解析エンジン:</b> Gemma 3が要約したルールデータ【${ruleSnippet}】をバックボーンに設定しました。現在の状況【${playerContext.situation}】および役職[${playerContext.occupation}]に基づき、最適な行動プランを出力します。`,
                     cards: selectedPattern
                 };
 
@@ -432,9 +426,7 @@
             askRealAI(playerContext);
         }
 
-        // ==========================================================
         // 【重要】Python(Streamlit)のデータブリッジから安全にデータを吸い出すロジック
-        // ==========================================================
         window.addEventListener('load', () => {
             const bridgeDiv = document.getElementById('python-ocr-bridge');
             if (bridgeDiv) {
