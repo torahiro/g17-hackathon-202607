@@ -14,17 +14,13 @@ class OCRReader:
             gpu=False
         )
 
-    def pdf_to_text(self, uploaded_file, start_page=1, end_page=None):
+    def pdf_to_text(self, pdf_source, start_page=1, end_page=None):
+        # ファイルパス(str)とアップロードファイルオブジェクトの両方に対応
+        if isinstance(pdf_source, str):
+            pdf = fitz.open(pdf_source)
+        else:
+            pdf = fitz.open(stream=pdf_source.read(), filetype="pdf")
 
-        pdf = fitz.open(
-            stream=uploaded_file.read(),
-            filetype="pdf"
-        )
-
-        if end_page is None:
-            end_page = len(pdf)
-
-        text = ""
 
         for page_num in range(start_page - 1, end_page):
 
@@ -56,17 +52,12 @@ class OCRReader:
 
         return text
 
-    def pokemon_manual(self, uploaded_file):
+    def pokemon_manual(self, pdf_source):
 
         return self.pdf_to_text(
-            uploaded_file,
+            pdf_source,
             start_page=1
         )
 
-    def coc_manual(self, uploaded_file):
-
-        return self.pdf_to_text(
-            uploaded_file,
-            start_page=4,
-            end_page=20
-        )
+    def coc_manual(self, pdf_source):
+        return self.pdf_to_text(pdf_source, start_page=4, end_page=20)
