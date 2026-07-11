@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>クトゥルフ神話TRPG専用AI『何でも屋』LIVE HUD</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         :root {
             --bg-main: #05070f;
@@ -72,6 +71,22 @@
             font-weight: bold;
         }
 
+        /* 役職別 注目ポイント表示エリア */
+        .occupation-tips-box {
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #1e293b;
+            border-left: 3px solid var(--neon-yellow);
+            font-size: 0.82em;
+            line-height: 1.5;
+            color: #cbd5e1;
+            margin-bottom: 20px;
+        }
+        .occupation-tips-box b {
+            color: var(--neon-yellow);
+        }
+
         .main-content {
             margin-left: 330px; padding: 40px; width: calc(100% - 330px);
             box-sizing: border-box; height: 100vh; overflow-y: auto;
@@ -84,7 +99,15 @@
         .hud-title {
             font-size: 1.6em; font-weight: 900;
             background: linear-gradient(to right, #0ea5e9, #818cf8);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            -webkit-background            .hud-title {
+                font-size: 1.6em;
+                font-weight: 900;
+                background: linear-gradient(to right, #0ea5e9, #818cf8);
+                background-clip: text;
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                letter-spacing: 1px;
+            }-clip: text; -webkit-text-fill-color: transparent;
             letter-spacing: 1px;
         }
 
@@ -101,12 +124,6 @@
         }
         .flow-step.success { color: var(--neon-green); border-bottom-color: var(--neon-green); }
         .flow-step.failed { color: var(--neon-rare); border-bottom-color: var(--neon-rare); }
-
-        .upload-section {
-            background: #091022; border: 2px dashed #1e293b;
-            padding: 25px; border-radius: 12px; margin-bottom: 25px; text-align: center;
-        }
-        .upload-section.loaded { border-color: var(--neon-green); background: #051614; }
 
         .live-controller {
             background: #0f172a; border: 1px solid #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 25px;
@@ -169,11 +186,14 @@
 
         <hr style="border-color: #1e293b; margin: 20px 0;">
         <h3 style="font-size:1.1em; color:var(--neon-blue);">👤 2. 役職・ステータス確認</h3>
-        
+
         <div class="input-group">
             <label>あなたの役職を入力してください</label>
-            <input type="text" id="occupationInput" value="私立探偵" placeholder="例：高校生、刑事、精神科医など" oninput="updateLiveSystem()">
+            <input type="text" id="occupationInput" value="私立探偵" placeholder="例：高校生、刑事、精神科医など" oninput="handleOccupationChange()">
         </div>
+
+        <!-- 役職によって注目するポイント（AIは使わず辞書ベースで即時表示） -->
+        <div class="occupation-tips-box" id="occupationTipsBox"></div>
 
         <div class="input-group">
             <label>技能値リスト</label>
@@ -209,17 +229,9 @@
             <div class="flow-step" id="stepVisual4">💡 4. 最適解を提示</div>
         </div>
 
-        <!-- Python連携時は最初から非表示になり、メインシステムが起動します -->
-        <div class="upload-section" id="uploadDropZone">
-            <h4 style="margin:0 0 10px 0; letter-spacing:1px;">💾 クトゥルフ神話TRPGルール.pdf のスキャン</h4>
-            <input type="file" id="pdfFileInput" accept=".pdf" style="color:var(--text-muted); font-size:0.9em;">
-            <div id="pdfEngineStatus" style="font-size:0.85em; color:var(--neon-blue); margin-top:10px; font-weight:bold;">
-                ⚠️ 待機中: ルールブックPDFを読み込ませるとシステムが起動します。
-            </div>
-        </div>
-
+        <!-- systemMain は Python(app.py)側から display:block に書き換えられて表示される -->
         <div id="systemMain" style="display: none;">
-            
+
             <div class="live-controller">
                 <div class="wrapper" style="color:var(--neon-blue); font-size:0.85em; font-weight:bold;">外部リンク：セッション状況・ダイス結果リアルタイム入力</div>
                 <div class="controller-row">
@@ -227,7 +239,7 @@
                         <label style="font-size:0.8em; color:white; display:block; margin-bottom:5px;">📋 1. 現在置かれている状況・KPの描写（自由入力）</label>
                         <textarea id="situationInput" rows="3" style="width:100%; padding:10px; background:#111827; color:white; border: 1px solid #1e293b; border-radius:6px; box-sizing:border-box; font-size:0.9em; resize:none;" placeholder="例：怪しい洋館の書斎に閉じ込められた。机の上に日記帳が残されている..."></textarea>
                     </div>
-                    
+
                     <div class="control-block">
                         <label style="font-size:0.8em; color:white; display:block; margin-bottom:5px;">🎲 3. 直前のダイス成否</label>
                         <select id="diceResultSelect" style="width:100%; padding:10px; background:#1e293b; color:white; border-radius:6px;" onchange="updateLiveSystem()">
@@ -249,8 +261,36 @@
     </div>
 
     <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-        let rulebookFullText = ""; 
+        let rulebookFullText = "";
+
+        // ================================================================
+        // 「2. 役職によって注目するポイント」 辞書（AIを使わず即時表示）
+        // 必要に応じてCoCの世界観・実際のルールに合わせて追記してください
+        // ================================================================
+        const occupationTips = {
+            "私立探偵":   "観察眼と情報収集力が武器。〈目星〉〈聞き耳〉〈図書館〉を優先的に振ろう。単独行動になりがちなので正気度の消耗に注意。",
+            "刑事":       "現場保存・尋問のプロ。〈法律〉〈説得〉〈精神分析〉で情報を引き出しやすい。強行突破より合法的な手続きを優先すると信用を保てる。",
+            "医者":       "〈医学〉〈応急手当〉が要。仲間の負傷や正気度喪失時のケア役になれる。戦闘より後方支援が得意。",
+            "精神科医":   "〈精神分析〉〈説得〉で仲間や関係者の心理状態を読みやすい。正気度ルールへの理解も深いはず。",
+            "学生":       "専門技能は少なめだが〈図書館〉〈目星〉などの基本技能はそこそこ高い。無理せず慎重に、仲間と連携しよう。",
+            "高校生":     "戦闘力は低め。〈目星〉〈図書館〉で情報収集に徹し、危険な場面は大人に任せる判断も大事。",
+            "軍人":       "〈拳銃〉〈ライフル〉〈近接戦闘〉が得意。戦闘の矢面に立てるが、正気度ダメージには耐性がないので過信は禁物。",
+            "ジャーナリスト": "〈言いくるめ〉〈図書館〉〈写真術〉で情報を集めやすい。ただし首を突っ込みすぎると危険な相手に目をつけられることも。",
+            "神父":       "〈オカルト〉〈説得〉に強く、超自然現象への心理的耐性がやや高い設定にされることが多い。"
+        };
+        const DEFAULT_TIP = "この役職特有のデータはまだ登録されていません。状況と手持ちの技能を見ながら、慎重に行動しましょう。";
+
+        function handleOccupationChange() {
+            updateOccupationTips();
+            updateLiveSystem();
+        }
+
+        function updateOccupationTips() {
+            const occInput = document.getElementById('occupationInput').value.trim();
+            const box = document.getElementById('occupationTipsBox');
+            const tip = occupationTips[occInput] || DEFAULT_TIP;
+            box.innerHTML = `<b>💡 ${occInput || "役職未入力"} が注目すべきポイント</b><br>${tip}`;
+        }
 
         function addSkillRow() {
             const container = document.getElementById('skillsContainer');
@@ -274,10 +314,10 @@
             const skills = [];
             skills.push({ name: "目星", val: document.getElementById('meganeInput').value });
             skills.push({ name: "図書館", val: document.getElementById('toshoInput').value });
-            
+
             const rows = document.querySelectorAll('.skills-container .skill-row');
             rows.forEach((row, index) => {
-                if(index > 1) { 
+                if(index > 1) {
                     const inputs = row.querySelectorAll('input');
                     if(inputs[0].value.trim() !== "") {
                         skills.push({ name: inputs[0].value, val: inputs[1].value });
@@ -287,38 +327,7 @@
             return skills;
         }
 
-        // スタンドアロン起動用のフォールバック（直接HTMLを開いた時用）
-        document.getElementById('pdfFileInput').addEventListener('change', function(e) {
-            let file = e.target.files[0];
-            if (!file) return;
-            let fileReader = new FileReader();
-            fileReader.onload = function() {
-                let typedarray = new Uint8Array(this.result);
-                pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
-                    let totalPages = pdf.numPages;
-                    let extractedText = "";
-                    let count = 0;
-                    for (let i = 1; i <= totalPages; i++) {
-                        pdf.getPage(i).then(function(page) {
-                            page.getTextContent().then(function(textContent) {
-                                extractedText += textContent.items.map(item => item.str).join(" ") + "\n";
-                                count++;
-                                if (count === totalPages) {
-                                    rulebookFullText = extractedText; 
-                                    document.getElementById('uploadDropZone').style.display = 'none';
-                                    document.getElementById('systemMain').style.display = 'block';
-                                    document.getElementById('situationInput').value = "古い物置部屋。目の前に、不自然に木の板で頑丈に封鎖された古い食器棚が置かれている。";
-                                    updateLiveSystem();
-                                }
-                            });
-                        });
-                    }
-                });
-            };
-            fileReader.readAsArrayBuffer(file);
-        });
-
-        // ====== 外部APIを完全に省き、Python(Gemma3)のデータを100%連動させるコアロジック ======
+        // ====== Python(Gemma3)から渡されたルールデータのみを使うコアロジック（モック生成） ======
         async function askRealAI(playerContext) {
             updateVisualSteps(playerContext.dice_state);
             document.getElementById('aiAnalysisBox').innerHTML = `⚙️ 状況を読み込み、行動カードを緊急演算中...`;
@@ -331,13 +340,11 @@
 
             let primarySkill = playerContext.skills[0] || {name: "目星", val: 70};
 
-            // Python側(Gemma3の要約)から引き渡されたルールテキストをクリーンアップして冒頭を抽出
             let ruleSnippet = "ルールブックのデータ";
             if (rulebookFullText && rulebookFullText.length > 20) {
                 ruleSnippet = rulebookFullText.replace('[OCRデータ同期済]', '').trim().substring(0, 50) + "...";
             }
 
-            // 【更新ボタン対応】押されるたびに、表示される行動パターンをランダムに変えるためのネタ帳（3パターン）
             const actionPatterns = [
                 [
                     { tag: "王道", title: "ルールに準拠した慎重な調査", text: `記憶されたルール【${ruleSnippet}】を参考に、安全に〈${primarySkill.name}〉(${primarySkill.val}%)で周囲の痕跡を探ります。`, pct: parseInt(primarySkill.val) },
@@ -356,17 +363,14 @@
                 ]
             ];
 
-            // Python側の更新ボタンなどでトリガーされる度に、ランダムに別パターンを選択してバリエーションを演出
             let selectedPattern = actionPatterns[Math.floor(Math.random() * actionPatterns.length)];
 
-            // 0.3秒のディレイ（AIがデータを読み込んでいる臨場感を演出）
             setTimeout(() => {
                 let aiResult = {
                     analysis: ` <b>ローカルLLM同期解析エンジン:</b> Gemma 3が要約したルールデータ【${ruleSnippet}】をバックボーンに設定しました。現在の状況【${playerContext.situation}】および役職[${playerContext.occupation}]に基づき、最適な行動プランを出力します。`,
                     cards: selectedPattern
                 };
 
-                // ダイス結果によるステータス特効・ペナルティの動的変化
                 if (playerContext.dice_state === "critical") {
                     aiResult.analysis += " 👑大成功を検知したため、次の行動の成功率は100%に補正され、決定的な手がかりが自動開示されます！";
                     aiResult.cards[0].pct = 100;
@@ -417,8 +421,8 @@
             if (document.getElementById('systemMain').style.display === 'none') return;
             let playerContext = {
                 level: document.getElementById('playerLevelSelect').value,
-                player_count: document.getElementById('playerCountSelect').value, 
-                occupation: document.getElementById('occupationInput').value,    
+                player_count: document.getElementById('playerCountSelect').value,
+                occupation: document.getElementById('occupationInput').value,
                 situation: document.getElementById('situationInput').value,
                 dice_state: document.getElementById('diceResultSelect').value,
                 skills: getAllSkills()
@@ -432,17 +436,18 @@
             if (bridgeDiv) {
                 const ocrText = bridgeDiv.getAttribute('data-text');
                 if (ocrText && ocrText.trim() !== "") {
-                    // HTML側のグローバル変数にGemma3の要約を完全同期
-                    rulebookFullText = ocrText; 
-                    
-                    // UI切り替え：アップロード要素を隠し、HUD本体を表示
-                    document.getElementById('uploadDropZone').style.display = 'none';
+                    rulebookFullText = ocrText;
+
                     document.getElementById('systemMain').style.display = 'block';
-                    
-                    // 初期のシチュエーションをセットして、自動で一発目の疑似AI解析を走らせる
                     document.getElementById('situationInput').value = "古い物置部屋。目の前に、不自然に木の板で頑丈に封鎖された古い食器棚が置かれている。";
-                    updateLiveSystem(); 
+
+                    updateOccupationTips();
+                    updateLiveSystem();
                 }
+            } else {
+                // ブリッジが無い（開発時にHTML単体で開いた等）場合でも、
+                // 役職ヒントだけは表示できるようにしておく
+                updateOccupationTips();
             }
         });
     </script>
